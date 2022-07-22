@@ -27,9 +27,15 @@ class DHCPServer():
             try:
                 print("Wait DHCP discovery.")
                 data, address = s.recvfrom(MAX_BYTES)
+                if (data[242] != 1):
+                    print(data[242])
+                    print("Msg no Discovery")
+                    continue
                 print("Receive DHCP discovery.")
         
                 print("Send DHCP offer.")
+                mac = data[28:34]
+                print("Mac is " + mac.hex())
                 data = self.__get_offer(data[4:8])
                 s.sendto(data, dest)
                 
@@ -42,9 +48,18 @@ class DHCPServer():
                     try:
                         print("Wait DHCP request.")
                         data, address = s.recvfrom(MAX_BYTES)
+                        if (data[242] != 3):
+                            print("Msg no request")
+                            continue
                         print("Receive DHCP request.")
 
-                        print("Send DHCP pack.\n")
+                        mac_req = data[28:44]
+
+                        if mac != mac_req:
+                            print("Wrong mac address. Repeat...")
+                            continue
+
+                        print("Send DHCP ack.\n")
                         data = self.__get_ack(data[4:8])
                         s.sendto(data, dest)
 
@@ -149,7 +164,7 @@ class DHCPServer():
 
         opt_string += bytes([0xff])
 
-        return self.__construct_offer(transaction_id, ip, opt_string)
+        return self.__construct_ack(transaction_id, ip, opt_string)
 
     def __construct_ack(self, XID, ip, options):
         OP = bytes([0x02])
@@ -174,4 +189,9 @@ class DHCPServer():
 
 if __name__ == '__main__':
     dhcp_server = DHCPServer('192.168.2.1')
-    dhcp_server.run()
+    try:
+        dhcp_server.run()
+    except KeyboardInterrupt:
+        print("\nShutting down server")
+        exit(0)
+
