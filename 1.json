@@ -1,0 +1,10 @@
+[
+    {"name": "ip", "value": "192.168.2.100"},
+    {"name": "dns-server", "value": ["192.168.2.1", "192.168.2.2"]},
+    {"name": "subnet", "value": "255.255.255.0"},
+    {"name": "router", "value": ["192.168.2.1", "192.168.2.2"]},
+    {"name": "domain-name", "value": "test.example"},
+    {"name": "time-server", "value": ["192.168.2.1", "192.168.2.2"]},
+    {"name": "dhcp-server", "value": "192.168.2.1"},
+    {"name": "lease-time", "value": 86400}
+]
