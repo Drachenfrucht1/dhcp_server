@@ -1,5 +1,7 @@
 import socket
 
+from dhcpoptions import DHCPOption
+
 class AckBuilder():
     _server_ip: bytes
     _ip: bytes
@@ -19,25 +21,25 @@ class AckBuilder():
 
     def build(self) -> bytes:
         if len(self._time_servers) > 0:
-            self._options += bytes([4, 4*len(self._time_servers)])
+            self._options += bytes([DHCPOption.TIME_SERVER, 4*len(self._time_servers)])
             for s in self._time_servers:
                 self._options += s
 
         if len(self._dns_servers) > 0:
-            self._options += bytes([6, 4*len(self._dns_servers)])
+            self._options += bytes([DHCPOption.DNS_SERVER, 4*len(self._dns_servers)])
             for s in self._dns_servers:
                 self._options += s
 
         if len(self._router) > 0:
-            self._options += bytes([3, 4*len(self._router)])
+            self._options += bytes([DHCPOption.ROUTER, 4*len(self._router)])
             for s in self._router:
                 self._options += s
 
 
         if self._ack:
-            self._options += bytes([53 , 1 , 5]) # DHCP ack
+            self._options += bytes([DHCPOption.MESSAGE_TYPE , 1 , 5]) # DHCP ack
         else:
-            self._options += bytes([53 , 1 , 6]) # DHCP nack
+            self._options += bytes([DHCPOption.MESSAGE_TYPE , 1 , 6]) # DHCP nack
 
         OP = bytes([0x02])
         HTYPE = bytes([0x01])
@@ -50,7 +52,7 @@ class AckBuilder():
         GIADDR = bytes([0x00, 0x00, 0x00, 0x00])
         OFFSET = bytes(192)
 
-        return OP + HTYPE + HLEN + HOPS + self._transaction_id + SECS + FLAGS + CIADDR + self._ip + self._server_ip + GIADDR + self._mac + OFFSET + self._options + bytes(0xff)
+        return OP + HTYPE + HLEN + HOPS + self._transaction_id + SECS + FLAGS + CIADDR + self._ip + self._server_ip + GIADDR + self._mac + OFFSET + self._options + bytes([DHCPOption.DHCP_SERVER, 4]) + self._server_ip + bytes(DHCPOption.END)
 
     def ack(self):
         self._ack = True
@@ -63,19 +65,15 @@ class AckBuilder():
         return self
 
     def subnet(self, subnet: str):
-        self._options += bytes([1, 4]) + socket.inet_aton(subnet)
+        self._options += bytes([DHCPOption.SUBNET, 4]) + socket.inet_aton(subnet)
         return self
 
     def lease_time(self, lease_time: int):
-        self._options += bytes([51, 4]) + lease_time.to_bytes(4, byteorder='big')
+        self._options += bytes([DHCPOption.LEASE_TIME, 4]) + lease_time.to_bytes(4, byteorder='big')
         return self
 
     def domain_name(self, domain_name: str):
-        self._options += bytes([15, len(domain_name)]) + str.encode(domain_name)
-        return self
-
-    def dhcp_server(self, dhcp_server: str):
-        self._options += bytes([54, 4]) + socket.inet_aton(dhcp_server)
+        self._options += bytes([DHCPOption.DOMAIN_NAME, len(domain_name)]) + str.encode(domain_name)
         return self
 
     def time_server(self, time_server: str):

@@ -1,6 +1,7 @@
 import socket
 from typing import Callable
 
+from dhcpoptions import DHCPOption
 from offerbuilder import OfferBuilder
 from ackbuilder import AckBuilder
 
@@ -31,20 +32,17 @@ class DHCPServer():
         options = dict()
         i = 242
         while i < len(data)-1:
-            if data[i] == 255:
+            if data[i] == DHCPOption.END:
                 break
             elif data[i] == 0:
                 i = i+1
-            elif data[i] == 50:
-                # requested ip addr
+            elif data[i] == DHCPOption.REQUESTED_IP:
                 options[50] = data[(i+2):(i+6)]
                 i = i+6
-            elif data[i] == 51:
-                # requested lease time
+            elif data[i] == DHCPOption.LEASE_TIME:
                 options[51] = int.from_bytes(data[(i+2):(i+6)], signed=False)
                 i = i+6
-            elif data[i] == 55:
-                # requested options
+            elif data[i] == DHCPOption.REQUESTED_OPTIONS:
                 options[55] = [int.from_bytes(data[(i+2+(n*2)):(i+4+(n*2))]) for n in range(0, data[i+1])]
                 i = i+2+data[i+1]
             else:
@@ -52,7 +50,6 @@ class DHCPServer():
                 i = i+2+data[i+1]
             
         msg['options'] = options
-
         return msg
 
     def run(self) -> None:
@@ -68,7 +65,7 @@ class DHCPServer():
             try:
                 data, address = s.recvfrom(MAX_BYTES)
 
-                if (len(data) < 267 
+                if (len(data) < 243 
                     # no magic cookie
                     or data[236:240] != bytes([0x63, 0x82, 0x53, 0x63]) 
                     # no msg type option
