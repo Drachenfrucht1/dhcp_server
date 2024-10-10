@@ -1,3 +1,0 @@
-
-class DHCPConfig:
-    pass

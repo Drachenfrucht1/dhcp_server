@@ -1,11 +1,7 @@
 FROM python:latest
 
-COPY server.py server.py
-
-COPY 1.json 1.json
-
-COPY 2.json 2.json
+COPY *.py ./
 
 EXPOSE 67/udp
 
-ENTRYPOINT ["python", "server.py"]
+ENTRYPOINT ["python", "main.py"]

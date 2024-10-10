@@ -1,8 +1,8 @@
 import socket
-import json
+from typing import Callable
 
-import OfferBuilder from './offerbuilder.py'
-import DHCPConfig from './dhcpconfig.py'
+from offerbuilder import OfferBuilder
+from ackbuilder import AckBuilder
 
 MAX_BYTES = 1024
 
@@ -10,17 +10,53 @@ serverPort = 67
 clientPort = 68
 
 class DHCPServer():
-    __ip = bytes(4)
-    __counter = 1
-    __discoveryHandler
-    __requestHandler
-    def __init__(self, ip: str, discoveryHandler, requestHandler):
-        self.__ip = socket.inet_aton(ip)
-        self.__discoveryHandler = discoveryHandler
-        self.__requestHandler = requestHandler
+    _ip = bytes(4)
+    _discoveryHandler: Callable[[OfferBuilder, dict], bytes]
+    _requestHandler: Callable[[AckBuilder, dict], bytes]
+    _declineHandler: Callable[[dict], None]
+    _releaseHandler: Callable[[dict], None]
 
-    def run(self):
-        print("DHCP server is starting...\n")
+    def __init__(self, discoveryHandler, requestHandler, declineHandler, releaseHandler, ip: str):
+        self._ip = socket.inet_aton(ip)
+        self._discoveryHandler = discoveryHandler
+        self._requestHandler = requestHandler
+        self._declineHandler = declineHandler
+        self._releaseHandler = releaseHandler
+
+    def parseMessage(self, data: bytes) -> dict:
+        msg = dict()
+        msg['xid'] = data[4:8]
+        msg['mac'] = data[28:44]
+        msg['type'] = data[242]
+        options = dict()
+        i = 242
+        while i < len(data)-1:
+            if data[i] == 255:
+                break
+            elif data[i] == 0:
+                i = i+1
+            elif data[i] == 50:
+                # requested ip addr
+                options[50] = data[(i+2):(i+6)]
+                i = i+6
+            elif data[i] == 51:
+                # requested lease time
+                options[51] = int.from_bytes(data[(i+2):(i+6)], signed=False)
+                i = i+6
+            elif data[i] == 55:
+                # requested options
+                options[55] = [int.from_bytes(data[(i+2+(n*2)):(i+4+(n*2))]) for n in range(0, data[i+1])]
+                i = i+2+data[i+1]
+            else:
+                # skip this options, not implemented
+                i = i+2+data[i+1]
+            
+        msg['options'] = options
+
+        return msg
+
+    def run(self) -> None:
+        print("DHCP server is starting...\n", flush=True)
         
         s=socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR,1)
@@ -30,97 +66,29 @@ class DHCPServer():
 
         while 1:
             try:
-                print("Wait DHCP discovery.")
                 data, address = s.recvfrom(MAX_BYTES)
-                print("Receive DHCP discovery.")
 
-                discovery = dict()
-                discovery['mac'] = data[16:32]
-        
-                print("Send DHCP offer.")
-                data = self.__discoveryHandler()
-                s.sendto(data, dest)
-                
-                ####
-                # Only for testing purposes
-                # self.__counter += 1
-                ####
+                if (len(data) < 267 
+                    # no magic cookie
+                    or data[236:240] != bytes([0x63, 0x82, 0x53, 0x63]) 
+                    # no msg type option
+                    or data[240] != 53 
+                    or data[241] != 1
+                    # not ethernet as type
+                    or data[1] != 1
+                    or data[2] != 6):
+                    continue
+                    
+                msg = self.parseMessage(data)
+                if msg['type'] == 1:
+                    data = self._discoveryHandler(OfferBuilder(self._ip, msg['xid'], msg['mac']), msg)
+                    s.sendto(data, dest)
 
-                while 1:
-                    try:
-                        print("Wait DHCP request.")
-                        data, address = s.recvfrom(MAX_BYTES)
-                        print("Receive DHCP request.")
+                if msg['type'] == 3:
+                    data = self._requestHandler(AckBuilder(self._ip, msg['xid'], msg['mac']), msg)
+                    s.sendto(data, dest)
 
-                        request = dict()
-                        request['mac'] = data[16:32]
-
-                        print("Send DHCP pack.\n")
-                        data = self.__requestHandler(request)
-                        data = self.__get_ack(data[4:8])
-                        s.sendto(data, dest)
-
-                        self.__counter += 1
-                        break
-                    except:
-                        raise
+                if msg['type'] == 4:
+                    self._declineHandler(msg)
             except:
                 raise
-	
-    def __get_ack(self, transaction_id):
-        f = open(str(self.__counter) + ".json")
-        options = json.load(f)
-
-        opt_string = bytes([0x63, 0x82, 0x53, 0x63]) #magic cookie
-        opt_string += bytes([53 , 1 , 5]) # DHCP ACK
-        ip = bytes(4)
-
-        for opt in options:
-            if opt["name"] == "dns-server":
-                opt_string += bytes([6, 4*len(opt["value"])])
-                for s in opt["value"]:
-                    opt_string += socket.inet_aton(s)
-            if opt["name"] == "router":
-                opt_string += bytes([3, 4*len(opt["value"])])
-                for s in opt["value"]:
-                    opt_string += socket.inet_aton(s)
-            if opt["name"] == "time-server":
-                opt_string += bytes([4, 4*len(opt["value"])])
-                for s in opt["value"]:
-                    opt_string += socket.inet_aton(s)
-            if opt["name"] == "dhcp-server":
-                opt_string += bytes([54, 4]) + socket.inet_aton(opt["value"])
-            if opt["name"] == "domain-name":
-                opt_string += bytes([15, len(opt["value"])]) + str.encode(opt["value"])
-            if opt["name"] == "subnet":
-                opt_string += bytes([1, 4]) + socket.inet_aton(opt["value"])
-            if opt["name"] == "lease-time":
-                opt_string += bytes([51, 4]) + opt["value"].to_bytes(4, byteorder='big')
-            if opt["name"] == "ip":
-                ip = socket.inet_aton(opt["value"])
-
-        f.close()
-
-        opt_string += bytes([0xff])
-
-        return self.__construct_ack(transaction_id, ip, opt_string)
-
-    def __construct_ack(self, XID, ip, options):
-        OP = bytes([0x02])
-        HTYPE = bytes([0x01])
-        HLEN = bytes([0x06])
-        HOPS = bytes([0x00])
-        # XID = bytes([0x39, 0x03, 0xF3, 0x26])
-        SECS = bytes([0x00, 0x00])
-        FLAGS = bytes([0x00, 0x00])
-        CIADDR = bytes([0x00, 0x00, 0x00, 0x00])
-        GIADDR = bytes([0x00, 0x00, 0x00, 0x00])
-        CHADDR1 = bytes([0x00, 0x05, 0x3C, 0x04]) 
-        CHADDR2 = bytes([0x8D, 0x59, 0x00, 0x00])
-        CHADDR3 = bytes([0x00, 0x00, 0x00, 0x00]) 
-        CHADDR4 = bytes([0x00, 0x00, 0x00, 0x00]) 
-        CHADDR5 = bytes(192)
-	
-        package = OP + HTYPE + HLEN + HOPS + XID + SECS + FLAGS + CIADDR + ip + self.__ip + GIADDR + CHADDR1 + CHADDR2 + CHADDR3 + CHADDR4 + CHADDR5 + options
-
-        return package

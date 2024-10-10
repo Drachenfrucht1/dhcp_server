@@ -1,6 +1,6 @@
 import socket
 
-class OfferBuilder():
+class AckBuilder():
     _server_ip: bytes
     _ip: bytes
     _options: bytes
@@ -9,11 +9,11 @@ class OfferBuilder():
     _dns_servers =[]
     _transaction_id: bytes
     _mac: bytes
+    _ack: bool = True
 
     def __init__(self, server_ip: bytes, transaction_id: bytes, mac: bytes):
         self._server_ip = server_ip
         self._options = bytes([0x63, 0x82, 0x53, 0x63]) #magic cookie
-        self._options += bytes([53 , 1 , 2]) # DHCP offer
         self._transaction_id = transaction_id
         self._mac = mac
 
@@ -33,6 +33,12 @@ class OfferBuilder():
             for s in self._router:
                 self._options += s
 
+
+        if self._ack:
+            self._options += bytes([53 , 1 , 5]) # DHCP ack
+        else:
+            self._options += bytes([53 , 1 , 6]) # DHCP nack
+
         OP = bytes([0x02])
         HTYPE = bytes([0x01])
         HLEN = bytes([0x06])
@@ -45,6 +51,12 @@ class OfferBuilder():
         OFFSET = bytes(192)
 
         return OP + HTYPE + HLEN + HOPS + self._transaction_id + SECS + FLAGS + CIADDR + self._ip + self._server_ip + GIADDR + self._mac + OFFSET + self._options + bytes(0xff)
+
+    def ack(self):
+        self._ack = True
+
+    def nack(self):
+        self._ack = False
 
     def ip(self, ip: str):
         self._ip = socket.inet_aton(ip)
