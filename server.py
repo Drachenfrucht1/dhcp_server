@@ -1,9 +1,8 @@
 import socket
 from typing import Callable
 
+from dhcpmessage import Acknowledgement, Offer
 from dhcpoptions import DHCPOption
-from offerbuilder import OfferBuilder
-from ackbuilder import AckBuilder
 
 MAX_BYTES = 1024
 
@@ -12,8 +11,8 @@ clientPort = 68
 
 class DHCPServer():
     _ip = bytes(4)
-    _discoveryHandler: Callable[[OfferBuilder, dict], bytes]
-    _requestHandler: Callable[[AckBuilder, dict], bytes]
+    _discoveryHandler: Callable[[Offer, dict], (None | Offer)]
+    _requestHandler: Callable[[Acknowledgement, dict], (None | Acknowledgement)]
     _declineHandler: Callable[[dict], None]
     _releaseHandler: Callable[[dict], None]
 
@@ -78,12 +77,14 @@ class DHCPServer():
                     
                 msg = self.parseMessage(data)
                 if msg['type'] == 1:
-                    data = self._discoveryHandler(OfferBuilder(self._ip, msg['xid'], msg['mac']), msg)
-                    s.sendto(data, dest)
+                    data = self._discoveryHandler(Offer(self._ip, msg['xid'], msg['mac']), msg)
+                    if data is not None:
+                        s.sendto(data.build(), dest)
 
                 if msg['type'] == 3:
-                    data = self._requestHandler(AckBuilder(self._ip, msg['xid'], msg['mac']), msg)
-                    s.sendto(data, dest)
+                    data = self._requestHandler(Acknowledgement(self._ip, msg['xid'], msg['mac']), msg)
+                    if data is not None:
+                        s.sendto(data.build(), dest)
 
                 if msg['type'] == 4:
                     self._declineHandler(msg)
