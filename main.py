@@ -8,9 +8,16 @@ class DefaultDHCPServer():
     _ip: bytes
     _server: DHCPServer
     leases = dict()
-    def __init__(self, ip='192.168.2.1'):
-        self._ip = socket.inet_aton(ip)
-        self._server = DHCPServer(self.discoveryHandler, self.requestHandler, self.declineHandler, self.releaseHandler, ip)
+
+    ip_range = True
+    ips: list[bytes]
+    subnet: bytes
+    router: bytes
+    leasetime: int
+
+    def __init__(self, server_ip='192.168.2.1',  subnet='255.255.255.0', router='192.168.2.1', leastime=1296000):
+        self._ip = socket.inet_aton(server_ip)
+        self._server = DHCPServer(self.discoveryHandler, self.requestHandler, self.declineHandler, self.releaseHandler, server_ip)
 
     def start(self):
         self._server.run()
@@ -23,7 +30,7 @@ class DefaultDHCPServer():
         if DHCPOption.REQUESTED_IP in msg and True not in [a['ip'] == msg[DHCPOption.REQUESTED_IP] for a in self.leases.values()] == 0:
             ip = msg[DHCPOption.REQUESTED_IP]
 
-        return (offer.setIP('192.168.2.51')
+        return (offer.setIP(ip)
                 .setIPOption(DHCPOption.SUBNET, '255.255.255.0')
                 .setIPOption(DHCPOption.ROUTER, '192.168.2.50'))
 
@@ -40,7 +47,7 @@ class DefaultDHCPServer():
     def releaseHandler(self, msg):
         del self.leases[msg['mac'].hex()]
 
-    def getFreeIp(self):
+    def getFreeIp(self) -> bytes:
         pass
 
 if __name__ == '__main__':

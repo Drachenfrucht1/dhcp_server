@@ -88,5 +88,8 @@ class DHCPServer():
 
                 if msg['type'] == 4:
                     self._declineHandler(msg)
+
+                if msg['type'] == 7:
+                    self._releaseHandler(msg)
             except:
                 raise
