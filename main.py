@@ -1,55 +1,43 @@
-import socket
+import json
+import argparse
 
-from dhcpoptions import DHCPOption
-from server import DHCPServer
-from dhcpmessage import Offer, Acknowledgement
-
-class DefaultDHCPServer():
-    _ip: bytes
-    _server: DHCPServer
-    leases = dict()
-
-    ip_range = True
-    ips: list[bytes]
-    subnet: bytes
-    router: bytes
-    leasetime: int
-
-    def __init__(self, server_ip='192.168.2.1',  subnet='255.255.255.0', router='192.168.2.1', leastime=1296000):
-        self._ip = socket.inet_aton(server_ip)
-        self._server = DHCPServer(self.discoveryHandler, self.requestHandler, self.declineHandler, self.releaseHandler, server_ip)
-
-    def start(self):
-        self._server.run()
-
-    def discoveryHandler(self, offer: Offer, msg) -> (None | Offer):
-        if msg['mac'].hex() in self.leases:
-            return
-
-        ip = self.getFreeIp()
-        if DHCPOption.REQUESTED_IP in msg and True not in [a['ip'] == msg[DHCPOption.REQUESTED_IP] for a in self.leases.values()] == 0:
-            ip = msg[DHCPOption.REQUESTED_IP]
-
-        return (offer.setIP(ip)
-                .setIPOption(DHCPOption.SUBNET, '255.255.255.0')
-                .setIPOption(DHCPOption.ROUTER, '192.168.2.50'))
-
-    def requestHandler(self, ack: Acknowledgement, msg) -> (None | Acknowledgement):
-        if DHCPOption.DHCP_SERVER in msg and msg[DHCPOption.DHCP_SERVER] != self._ip:
-            del self.leases[msg['mac'].hex()]
-            return
-
-        self.leases[msg['mac'].hex()]['commited'] = True
-
-    def declineHandler(self, msg):
-        del self.leases[msg['mac'].hex()]
-
-    def releaseHandler(self, msg):
-        del self.leases[msg['mac'].hex()]
-
-    def getFreeIp(self) -> bytes:
-        pass
+from defaultserver import DefaultDHCPServer
 
 if __name__ == '__main__':
-    dhcp_server = DefaultDHCPServer(ip='192.168.2.50')
+    f = None
+    cnf = {}
+    try:
+        f = open('config.json')
+        cnf = json.load(f)
+    except:
+        pass
+
+    parser = argparse.ArgumentParser(description="DHCP Server with minimal configuration options")
+    parser.add_argument('--server', '-s', help='IP address of this computer')
+    parser.add_argument('--subnet', '-sn', help='Subnet mask of the local subnet')
+    parser.add_argument('--router', '-r', help='IP address of the router')
+    parser.add_argument('-ip', help='IP address of this computer. Either given as a range (e.g. 192-168.100-192.168.2.255) or as a comma separated list of Ip addresses')
+
+    args = parser.parse_args()
+
+    if args.server is not None:
+        cnf['server_ip'] = args.server
+
+    if args.subnet is not None:
+        cnf['subnet'] = args.subnet
+
+    if args.router is not None:
+        cnf['router'] = args.router
+
+    if args.ip is not None:
+        if '-' in args.ip:
+            s = args.ip.split('-')
+
+            cnf['ip'] = {}
+            cnf['ip']['start'] = s[0]
+            cnf['ip']['end'] = s[1]
+        else:
+            cnf['ip'] = args.ip.split(',')
+
+    dhcp_server = DefaultDHCPServer(cnf['ip'], cnf['server_ip'], cnf['subnet'], cnf['router'], cnf['leasetime'])
     dhcp_server.start()
