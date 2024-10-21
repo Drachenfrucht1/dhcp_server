@@ -1,6 +1,7 @@
 import socket
 
 from dhcpoptions import DHCPOption
+from utils import ip_str_or_b_to_b
 
 class DHCPMessage:
     server_ip: bytes
@@ -13,10 +14,7 @@ class DHCPMessage:
         self.mac = mac
         self.xid = xid
         self.options = options
-        if isinstance(server_ip, str):
-            self.server_ip = socket.inet_aton(server_ip)
-        else:
-            self.server_ip = server_ip
+        self.server_ip = ip_str_or_b_to_b(server_ip)
 
     def build(self):
         if self.server_ip is None or len(self.server_ip) != 4:
@@ -62,19 +60,26 @@ class DHCPMessage:
         return OP + HTYPE + HLEN + HOPS + self.xid + SECS + FLAGS + CIADDR + self.ip + self.server_ip + GIADDR + self.mac + OFFSET + optionbytes + bytes(DHCPOption.END)
 
     def setIP(self, ip: (bytes | str)):
-        if isinstance(ip, str):
-            self.ip = socket.inet_aton(ip)
-        else:
-            self.ip = ip
+        self.ip = ip_str_or_b_to_b(ip)
         return self
 
     def setOption(self, opt, value: (bytes | int)):
+        self.options[opt] = value
         return self
 
-    def setIPOption(self, opt, value: str):
+    def setIPOption(self, opt, value: (bytes | str)):
+        self.options[opt] = ip_str_or_b_to_b(value)
         return self
 
     def setStringOption(self, opt, value: str):
+        self.options[opt] = bytearray(value, 'utf-8')
+        return self
+
+    def addIPOption(self, opt, value: (bytes | str)):
+        if isinstance(self.options[opt], list):
+            self.options[opt].append(ip_str_or_b_to_b(value))
+        else:
+            self.options[opt] = [self.options[opt], ip_str_or_b_to_b(value)]
         return self
 
 class Acknowledgement(DHCPMessage):
