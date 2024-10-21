@@ -1,3 +1,5 @@
+import time
+
 from dhcpoptions import DHCPOption
 from server import DHCPServer
 from dhcpmessage import Offer, Acknowledgement
@@ -37,8 +39,11 @@ class DefaultDHCPServer():
             return
 
         ip = self.getFreeIp()
+        if ip == bytes([255,255,255,255]): return None
         if DHCPOption.REQUESTED_IP in msg and True not in [a['ip'] == msg[DHCPOption.REQUESTED_IP] for a in self.leases.values()] == 0:
             ip = msg[DHCPOption.REQUESTED_IP]
+
+        self.leases[msg['mac'].hex()] = {'ip': ip, 'time': time.time()}
 
         return (offer.setIP(ip)
                 .setIPOption(DHCPOption.SUBNET, self.subnet)
@@ -63,4 +68,13 @@ class DefaultDHCPServer():
         del self.leases[msg['mac'].hex()]
 
     def getFreeIp(self) -> bytes:
-        pass
+        leased_ips = [a['ip'] for a in self.leases.values()]
+        if self.ip_range:
+            for ip in range(int.from_bytes(self.ips[0], self.ips[1])):
+                if int.to_bytes(ip, length=4) not in leased_ips:
+                    return int.to_bytes(ip, length=4)
+        else:
+            for ip in self.ips:
+                if ip not in leased_ips:
+                    return ip
+        return bytes([255,255,255,255])
